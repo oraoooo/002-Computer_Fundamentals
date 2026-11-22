@@ -154,11 +154,84 @@ int lsh_launch(char **args){
     return 1;
 }
 
+// tutorial aslinya cuma sampe 1 execvp() per baris, belum support pipe.
+// jadi "ls | wc -l" bakal error kalo pake kode asli brennan.io. ini nambahin
+// biar bisa di-pipe kaya shell beneran.
+#define LSH_MAX_PIPE_CMDS 64
+
+int lsh_split_pipeline(char **args, char **commands[LSH_MAX_PIPE_CMDS]){
+    int cmd_count = 0;
+    commands[cmd_count++] = args;
+    for (int i = 0; args[i] != NULL; i++) {
+        if (strcmp(args[i], "|") == 0) {
+            args[i] = NULL;
+            if (cmd_count < LSH_MAX_PIPE_CMDS) {
+                commands[cmd_count++] = &args[i + 1];
+            }
+        }
+    }
+    return cmd_count;
+}
+
+// bikin N-1 pipe buat N command, fork semuanya, terus tiap child dicolokin
+// stdin/stdout nya ke pipe yang bener pake dup2 sebelum execvp.
+int lsh_launch_pipeline(char **commands[], int cmd_count){
+    int num_pipes = cmd_count - 1;
+    int pipefds[2 * LSH_MAX_PIPE_CMDS];
+    pid_t pids[LSH_MAX_PIPE_CMDS];
+
+    for (int i = 0; i < num_pipes; i++) {
+        if (pipe(pipefds + i * 2) < 0) {
+            perror("lsh");
+            return 1;
+        }
+    }
+
+    for (int i = 0; i < cmd_count; i++) {
+        pids[i] = fork();
+        if (pids[i] == 0) {
+            if (i != 0) {
+                dup2(pipefds[(i - 1) * 2], STDIN_FILENO);
+            }
+            if (i != cmd_count - 1) {
+                dup2(pipefds[i * 2 + 1], STDOUT_FILENO);
+            }
+            for (int j = 0; j < 2 * num_pipes; j++) {
+                close(pipefds[j]);
+            }
+            if (commands[i][0] != NULL && execvp(commands[i][0], commands[i]) == -1) {
+                perror("lsh");
+            }
+            exit(EXIT_FAILURE);
+        } else if (pids[i] < 0) {
+            perror("lsh");
+        }
+    }
+
+    for (int j = 0; j < 2 * num_pipes; j++) {
+        close(pipefds[j]);
+    }
+
+    int status;
+    for (int i = 0; i < cmd_count; i++) {
+        waitpid(pids[i], &status, 0);
+    }
+    return 1;
+}
+
 int lsh_execute(char **args){
   int i;
+  char **commands[LSH_MAX_PIPE_CMDS];
+  int cmd_count = lsh_split_pipeline(args, commands);
+
   if (args[0] == NULL) {
     return 1;
   }
+
+  if (cmd_count > 1) {
+    return lsh_launch_pipeline(commands, cmd_count);
+  }
+
   for (i = 0; i < lsh_num_builtins(); i++) {
     if (strcmp(args[0], builtin_str[i]) == 0) {
       return (*builtin_func[i])(args);

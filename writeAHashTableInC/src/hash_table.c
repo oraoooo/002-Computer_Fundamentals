@@ -53,7 +53,15 @@ static int ht_hash(const char* s, const int a, const int m){
 static int ht_get_hash(const char* s, const int num_buckets, const int attempt){
     const int hash_a = ht_hash(s, HT_PRIME_1, num_buckets);
     const int hash_b = ht_hash(s, HT_PRIME_2, num_buckets);
-    return (hash_a + (attempt * (hash_b + 1))) % num_buckets;
+    // ketemu pas lagi benchmark pake data gede: kalo hash_b == num_buckets - 1,
+    // step "hash_b + 1" jadi 0 mod num_buckets - jadi tiap attempt nge-probe
+    // slot yang SAMA terus, selamanya, kalo slot itu udah kepake key lain.
+    // ht_insert jadi infinite loop, gak bisa recover. untungnya num_buckets
+    // selalu prime (liat prime.c), jadi kalo step-nya di-clamp ke
+    // [1, num_buckets-1] otomatis coprime sama num_buckets, probe-nya
+    // dijamin nyentuh semua slot dulu sebelum ngulang.
+    const int step = (hash_b % (num_buckets - 1)) + 1;
+    return (hash_a + (attempt * step)) % num_buckets;
 }
 
 static ht_hash_table* ht_new_sized(const int base_size){
