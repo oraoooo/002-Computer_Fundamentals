@@ -6,3 +6,4 @@ Inspired from : https://github.com/practical-tutorials/project-based-learning
 - **Write a Hash Table in C** — data structures from scratch
 - **Memory Allocators 101 (C)** — how memory really works
 - **Build Your Own Text Editor / kilo (C)** — I/O, buffers, terminal
+- **CoreWiki (ASP.NET Core)** — a layered Razor Pages wiki app ([csharpfritz/CoreWiki](https://github.com/csharpfritz/CoreWiki)), useful for seeing CQRS/MediatR, EF Core, and ASP.NET Identity in a real multi-project solution
